@@ -1,6 +1,7 @@
 import 'package:craft/global_variables.dart';
 import 'package:craft/provider/login_provider.dart';
 import 'package:craft/provider/theme_provider.dart';
+import 'package:craft/screens/about/about_craft.dart';
 import 'package:craft/screens/homepage.dart';
 import 'package:craft/screens/user_management/login_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -210,9 +211,24 @@ class SettingsPage extends StatelessWidget {
               child: Column(
                 children: [
                   const Text('© 2024 CRAFT All rights reserved.'),
-                  TextButton(
-                    onPressed: _launchAboutURL,
-                    child: const Text("Learn More"),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                              context,
+                              PageTransition(
+                                  child: const AboutCraft(),
+                                  type: PageTransitionType.fade));
+                        },
+                        child: const Text("About CRAFT"),
+                      ),
+                      TextButton(
+                        onPressed: _launchAboutURL,
+                        child: const Text("Learn More"),
+                      ),
+                    ],
                   ),
                 ],
               ),

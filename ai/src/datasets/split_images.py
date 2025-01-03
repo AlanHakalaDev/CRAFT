@@ -1,4 +1,5 @@
 import csv
+import cv2
 import os
 from pathlib import Path
 import re
@@ -110,16 +111,23 @@ def consolidate_image_data(image_dir):
   return data_dict
 
 
-def copy_images(image_list, source, destination):
+def copy_images(image_list, source, destination, gray_scale=True):
   images_copied = 0
   data_dict = {}
   read_csv(image_list, data_dict)
   print(f'Copying images from {source} to {destination}')
+  if gray_scale:
+    print(f'Augmenting images through grayscale')
   for (image_name, label) in data_dict.items():
     categorized_image_dir = destination / label
     if not categorized_image_dir.exists():
       categorized_image_dir.mkdir()
-    shutil.copy(source / image_name, categorized_image_dir / image_name)
+    if gray_scale:
+      image = cv2.imread(str(source / image_name))
+      image = cv2.cvtColor(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+      cv2.imwrite(str(categorized_image_dir / image_name), image)
+    else:
+      shutil.copy(source / image_name, categorized_image_dir / image_name)
     images_copied += 1
     if images_copied % 70 == 0:
       printProgressBar(images_copied, len(data_dict.keys()), 'Progress', 'Complete', length=50)

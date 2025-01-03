@@ -3,13 +3,14 @@ This is a recreation of the Swin Transformer example found at
 https://keras.io/examples/vision/swin_transformers/ that will be the
 basis for our implementation of the Swin Transformer.
 """
-
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import keras
 from keras import layers
 from keras import ops
+import os
 
 
 num_classes = 100
@@ -35,6 +36,12 @@ validation_split = 0.1
 weight_decay = 0.005
 label_smoothing = 0.1
 
+# Get file path for data output
+parser = argparse.ArgumentParser()
+parser.add_argument("output", help="file path to output location")
+args = parser.parse_args()
+if args.output:
+    output_dir = args.output
 # Example uses CIFAR-100 and one-hot encoding
 (x_train, y_train), (x_test, y_test) = keras.datasets.cifar100.load_data()
 # Normalize images
@@ -425,6 +432,10 @@ history = model.fit(
     validation_data=val_dataset,
 )
 
+# Check if specified output dir exists
+if not os.path.isdir(output_dir):
+    os.mkdir(output_dir)
+    
 # Plotting results
 plt.plot(history.history["loss"], label="train_loss")
 plt.plot(history.history["val_loss"], label="val_loss")
@@ -433,9 +444,10 @@ plt.ylabel("Loss")
 plt.title("Train and Validation Losses Over Epochs", fontsize=14)
 plt.legend()
 plt.grid()
-plt.show()
+plt.savefig(f"{output_dir}/loss_graph.png")
 
-loss, accuracy, top_5_accuracy = model.evaluate(test_dataset)
-print(f"Test loss: {round(loss, 2)}")
-print(f"Test accuracy: {round(accuracy * 100, 2)}%")
-print(f"Test top 5 accuracy: {round(top_5_accuracy * 100, 2)}%")
+with open(f"{output_dir}/test_accuracy.txt", "w") as fptr:
+    loss, accuracy, top_5_accuracy = model.evaluate(test_dataset)
+    fptr.write(f"Test loss: {round(loss, 2)}")
+    fptr.write(f"Test accuracy: {round(accuracy * 100, 2)}%")
+    fptr.write(f"Test top 5 accuracy: {round(top_5_accuracy * 100, 2)}%")

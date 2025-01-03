@@ -173,8 +173,8 @@ train_ds = train_ds.map(preprocess,
 test_ds = test_ds.map(preprocess,
                       num_parallel_calls=tf.data.AUTOTUNE)
 # Augment training dataset
-train_ds = train_ds.prefetch(tf.data.AUTOTUNE).map(lambda x, y: (data_augmentation(x), y),
-                                                   num_parallel_calls=tf.data.AUTOTUNE)
+#train_ds = train_ds.prefetch(tf.data.AUTOTUNE).map(lambda x, y: (data_augmentation(x), y),
+#                                                   num_parallel_calls=tf.data.AUTOTUNE)
 
 input = keras.Input(shape=(image_dimension, image_dimension, 3))
 # Create base model of ResNet
@@ -198,13 +198,13 @@ shift=0.0
 zoom=0.3
 # construct the image generator for data augmentation
 #fill_mode is value put into empty spaces created by rotation or zooming; cval=1.0 means white
-#aug = ImageDataGenerator(rotation_range=180,
-#	horizontal_flip=False, vertical_flip=False, width_shift_range=shift, 
-#    height_shift_range=shift, zoom_range=zoom, fill_mode="constant",cval=1.0)
+aug = ImageDataGenerator(rotation_range=180,
+	horizontal_flip=False, vertical_flip=False, width_shift_range=shift, 
+    height_shift_range=shift, zoom_range=zoom, fill_mode="constant",cval=1.0)
 
-#best_gen_augmented_model = train_model(model, 
-#                              train_dataset=aug.flow(train_ds.as_numpy_iterator()), 
-#                              val_dataset=test_ds)
+best_gen_augmented_model = train_model(model, 
+                              train_dataset=aug.flow(train_ds.as_numpy_iterator()), 
+                              val_dataset=test_ds)
 """
 hist = train_model(model,
                     train_dataset=train_ds, 

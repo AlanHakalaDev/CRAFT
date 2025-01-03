@@ -16,8 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:page_transition/page_transition.dart';
 import 'package:provider/provider.dart';
 import 'package:image/image.dart' as img;
-import 'package:tflite_flutter_helper_plus/tflite_flutter_helper_plus.dart';
-import 'package:tflite_flutter_plus/tflite_flutter_plus.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
 
 class HomePage extends StatefulWidget {
   static const String id = 'home';
@@ -35,18 +34,16 @@ class _HomePageState extends State<HomePage> {
   img.Image? imageForModel;
 
   late Interpreter interpreter;
-  late List<String> labels;
-
-  late List<int> _inputShape;
+  List<String> labels = [
+    "Kana'a",
+    "Black Mesa",
+    "Sosi",
+    "Dogoszhi",
+    "Flagstaff",
+    "Tusayan",
+    "Kayenta"
+  ];
   late List<int> _outputShape;
-
-  late TensorImage _inputImage;
-  late TensorBuffer _outputBuffer;
-
-  late TfLiteType _inputType;
-  late TfLiteType _outputType;
-
-  final String _labelsFileName = 'assets/tww_labels.txt';
 
   Map<String, dynamic>? classificatoinMap;
 
@@ -58,26 +55,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> loadModel() async {
-    interpreter = await Interpreter.fromAsset('ResNet152V2.tflite');
-
-    _inputShape = interpreter.getInputTensor(0).shape;
+    interpreter = await Interpreter.fromAsset('assets/convnext.tflite');
     _outputShape = interpreter.getOutputTensor(0).shape;
-    _inputType = interpreter.getInputTensor(0).type;
-    _outputType = interpreter.getOutputTensor(0).type;
-    _outputBuffer = TensorBuffer.createFixedSize(_outputShape, _outputType);
-
-    labels = await FileUtil.loadLabels(_labelsFileName);
-  }
-
-  TensorImage _preProcess() {
-    int cropSize = min(_inputImage.height, _inputImage.width);
-    return ImageProcessorBuilder()
-        .add(ResizeWithCropOrPadOp(cropSize, cropSize))
-        .add(ResizeOp(
-            _inputShape[1], _inputShape[2], ResizeMethod.nearestneighbour))
-        .add(NormalizeOp(0, 255))
-        .build()
-        .process(_inputImage);
   }
 
   Future<void> getCurrentUser() async {
@@ -129,32 +108,38 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    setState(() {
+      selectedImage = File(croppedFile.path);
+    });
+
     //convert croppedFile to grayscale
     // Read the image file
     final File imageFile = File(croppedFile.path);
     final Uint8List imageBytes = await imageFile.readAsBytes();
 
     // Decode the image using the image package
-    img.Image? image = img.decodeImage(imageBytes);
+    img.Image? image = img.decodeImage(Uint8List.fromList(imageBytes));
 
     if (image == null) {
       return;
     }
 
-    // Convert the image to grayscale
-    img.Image grayscaleImage = img.grayscale(image);
-    imageForModel = grayscaleImage;
+    imageForModel = image;
+
+    classifyImage();
+
+    // imageForModel = grayscaleImage;
 
     // Encode the grayscale image back to PNG format
-    final List<int> grayscaleBytes = img.encodePng(grayscaleImage);
+    // final List<int> grayscaleBytes = img.encodePng(grayscaleImage);
 
-    // Save the grayscale image as a new file
-    final File grayscaleFile =
-        await File(croppedFile.path).writeAsBytes(grayscaleBytes);
+    // // Save the grayscale image as a new file
+    // final File grayscaleFile =
+    //     await File(croppedFile.path).writeAsBytes(grayscaleBytes);
 
-    setState(() {
-      selectedImage = grayscaleFile;
-    });
+    // setState(() {
+    //   selectedImage = grayscaleFile;
+    // });
   }
 
   void resetScreen() {
@@ -204,22 +189,49 @@ class _HomePageState extends State<HomePage> {
     //randomize the position by 500 meters
     pos = randomizePosition(pos, 500);
 
-    setState(() {
-      currentPosition = pos;
-      classificaitonData = "Classified";
-    });
+    const inputSize = 224;
+    // Resize the image
+    final imageBytes = await selectedImage!.readAsBytes();
+    final decodedImage = img.decodeImage(imageBytes);
+    if (decodedImage == null) return;
+    final resizedImage = img.copyResize(decodedImage,
+        width: inputSize,
+        height: inputSize,
+        interpolation: img.Interpolation.average);
 
-    _inputImage = TensorImage(_inputType);
-    _inputImage.loadImage(imageForModel!);
-    _inputImage = _preProcess();
+    // Prepare the input buffer for the TFLite model
+    final input = List.generate(
+        1,
+        (_) => List.generate(
+            inputSize,
+            (_) =>
+                List.generate(inputSize, (_) => List<double>.filled(3, 0.0))));
 
-    interpreter.run(_inputImage.buffer, _outputBuffer.getBuffer());
+    // Keep original RGB values
+    for (int y = 0; y < inputSize; y++) {
+      for (int x = 0; x < inputSize; x++) {
+        final pixel = resizedImage.getPixel(x, y);
+        input[0][y][x][0] = img.getRed(pixel).toDouble();
+        input[0][y][x][1] = img.getGreen(pixel).toDouble();
+        input[0][y][x][2] = img.getBlue(pixel).toDouble();
+      }
+    }
+
+// Run the model inference
+    final outputBuffer =
+        List.generate(1, (_) => List.filled(_outputShape[1], 0.0));
+
+    interpreter.run(input, outputBuffer);
 
     Map<String, double> resultMap = {};
 
     for (int i = 0; i < labels.length; i++) {
-      resultMap[labels[i]] = _outputBuffer.getDoubleList()[i];
+      double confidence = outputBuffer[0][i];
+      if (confidence > 0.1) {
+        resultMap[labels[i]] = confidence;
+      }
     }
+
     String highestConfidenceLabel = '';
     double highestConfidenceValue = 0.0;
 
@@ -237,6 +249,11 @@ class _HomePageState extends State<HomePage> {
         'lattitude': pos.latitude,
         'longitude': pos.longitude,
       };
+    });
+
+    setState(() {
+      currentPosition = pos;
+      classificaitonData = "Classified";
     });
   }
 
@@ -535,7 +552,7 @@ class _HomePageState extends State<HomePage> {
                                         FittedBox(
                                           fit: BoxFit.contain,
                                           child: Text(
-                                            'ABOUT\nTUYSAYAN\nWHITE\nWARE',
+                                            'ABOUT\nTUSAYAN\nWHITE\nWARE',
                                             style: TextStyle(
                                               fontSize: 20,
                                               fontFamily: 'Uber',
@@ -680,15 +697,24 @@ class _HomePageState extends State<HomePage> {
                           padding: const EdgeInsets.all(12.0),
                           child: Column(
                             children: [
-                              const Text('Primary Classification:'),
+                              const Text('Primary Classification:',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
                               Text(
-                                "${classificatoinMap!['primaryClassification'].toString()} [${classificatoinMap!['allClassificatoins']?[classificatoinMap!['primaryClassification'].toString()].toStringAsFixed(3)}]",
+                                "${classificatoinMap!['primaryClassification'].toString()} [${classificatoinMap!['allClassificatoins']?[classificatoinMap!['primaryClassification']]?.toStringAsFixed(3) ?? "0.0"}]",
                                 style: const TextStyle(
                                     fontSize: 20, fontWeight: FontWeight.bold),
                               ),
+                              const Text(
+                                'Model Prediction:',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              ...classificatoinMap!['allClassificatoins']
+                                  .entries
+                                  .map((entry) => Text(
+                                      '${entry.key}: ${entry.value.toStringAsFixed(3)}')),
                               Text(
                                   "Location: ${classificatoinMap!['lattitude'].toStringAsFixed(4)}, ${classificatoinMap!['longitude'].toStringAsFixed(4)}"),
-                              // const Text("Other Classifications:"),
                             ],
                           )),
                     )
@@ -697,10 +723,13 @@ class _HomePageState extends State<HomePage> {
                 height: 16,
               ),
               selectedImage != null && classificaitonData == null
-                  ? Center(
-                      child: FilledButton(
-                          onPressed: classifyImage,
-                          child: const Text('Classify')),
+                  // ? Center(
+                  //     child: FilledButton(
+                  //         onPressed: classifyImage,
+                  //         child: const Text('Classify')),
+                  //   )
+                  ? const Center(
+                      child: CircularProgressIndicator(),
                     )
                   : Container(),
               selectedImage != null && classificaitonData == null
@@ -712,11 +741,26 @@ class _HomePageState extends State<HomePage> {
                   : Container(),
               selectedImage != null && classificaitonData != null
                   ? Center(
-                      child: FilledButton(
-                          onPressed: saveClassificationLocally,
-                          child: const Text('Save Classification')),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          FilledButton(
+                              onPressed: saveClassificationLocally,
+                              child: const Text('Save Classification')),
+                          FilledButton(
+                              onPressed: () {
+                                Navigator.push(
+                                    context,
+                                    PageTransition(
+                                        child: const AboutTww(),
+                                        type: PageTransitionType.fade));
+                              },
+                              child: const Text('TWW About')),
+                        ],
+                      ),
                     )
                   : Container(),
+
               selectedImage != null && classificaitonData != null
                   ? Center(
                       child: TextButton(
